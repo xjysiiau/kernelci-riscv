@@ -23,7 +23,13 @@ case "$EXTS" in
     ;;
 esac
 
-if ! $CC -O2 -march=$MARCH "$SRC" -o "$BIN" 2>"$OUT/vector_build.log"; then
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  if [ ! -x "$BIN" ]; then
+    echo "vector: FAIL (prebuilt binary missing at $BIN)"
+    echo '{"test":"vector","status":"FAIL","reason":"prebuilt missing"}' > "$OUT/vector.json"
+    exit 1
+  fi
+elif ! $CC -O2 -march=$MARCH "$SRC" -o "$BIN" 2>"$OUT/vector_build.log"; then
   echo "vector: FAIL (build error)"
   tail -8 "$OUT/vector_build.log"
   echo '{"test":"vector","status":"FAIL","reason":"build"}' > "$OUT/vector.json"

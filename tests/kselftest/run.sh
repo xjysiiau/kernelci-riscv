@@ -15,18 +15,23 @@ ST_OUT="$WORK/build"          # kselftest build output tree
 mkdir -p "$WORK" "$ST_OUT"
 
 NCPU=$(nproc)
+SKIP_BUILD=${KSELFTEST_BUILD:-build}
 
 # ---------------------------------------------------------------- build ----
-if [ ! -d "$KERNEL_SRC/usr/include/linux" ]; then
-  echo "[build] installing uapi headers..."
-  (cd "$KERNEL_SRC" && make ARCH=riscv headers) > "$WORK/headers.log" 2>&1 \
-    || { echo "kselftest: FAIL (make headers)"; tail -8 "$WORK/headers.log"; exit 1; }
-fi
+if [ "$SKIP_BUILD" = "skip" ]; then
+  echo "[build] SKIPPED (using prebuilt binaries under $ST_OUT)"
+else
+  if [ ! -d "$KERNEL_SRC/usr/include/linux" ]; then
+    echo "[build] installing uapi headers..."
+    (cd "$KERNEL_SRC" && make ARCH=riscv headers) > "$WORK/headers.log" 2>&1 \
+      || { echo "kselftest: FAIL (make headers)"; tail -8 "$WORK/headers.log"; exit 1; }
+  fi
 
-echo "[build] building selftests/riscv (ARCH=riscv, -j$NCPU)..."
-(cd "$KERNEL_SRC/tools/testing/selftests/riscv" && \
- make ARCH=riscv OUTPUT="$ST_OUT" -j"$NCPU") > "$WORK/build.log" 2>&1
-echo "[build] done (see $WORK/build.log)"
+  echo "[build] building selftests/riscv (ARCH=riscv, -j$NCPU)..."
+  (cd "$KERNEL_SRC/tools/testing/selftests/riscv" && \
+   make ARCH=riscv OUTPUT="$ST_OUT" -j"$NCPU") > "$WORK/build.log" 2>&1
+  echo "[build] done (see $WORK/build.log)"
+fi
 
 # ------------------------------------------------------------ run table ----
 # run_one <subdir> <binary> [timeout]
