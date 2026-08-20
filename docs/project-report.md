@@ -1,198 +1,167 @@
-# KernelCI RISC-V 本地化测试流水线 — 项目报告
+# KernelCI RISC-V 本地化测试流水线实践方案
+
+v1 ｜ 2026-08-20
 
 > 对应 SOW: [riscv-admin/dev-partners#49 — KernelCI: Statement of Work](https://github.com/riscv-admin/dev-partners/issues/49)
 > 仓库: https://github.com/xjysiiau/kernelci-riscv
-> 日期: 2026-08-20
 
-## 1. 项目概述
+## 核心结论
 
-### 1.1 背景
+RISC-V 架构规范和软件使能 profile(如 RVA23)在成熟,但 Linux 主线缺一套一致、持续、可复现的 RISC-V 内核测试;架构扩展(Vector/Hypervisor 等)与不同微架构的行为差异是主要测试缺口。本方案把 KernelCI 的模型搬到自己机器上:在 x86 宿主交叉编译 riscv64 内核,用 QEMU 模拟做测试目标,把「构建 → 配置漂移检查 → 启动 → 测试 → 报告」做成一条命令完成的闭环。测试靶子用闲置 openkylin 镜像的副本,每次启动加 `-snapshot`(写入即弃),测试内核的 bug 永远不会污染镜像,主力开发环境全程不参与。已实测:boot 通过、cpuinfo/Vector 通过、内核官方 selftests 10 项 9 过 1 挂 0 跳过。唯一失败(pointer_masking)经逐行比对确认是上游主线至今存在的测试↔内核语义矛盾,只在 QEMU 模拟的指针掩码(ZPM)平台上暴露——真实硬件大多无 ZPM,上游 CI 看不到,这是本方案最有价值的产出。Hypervisor 真机测试、容器化整合等未上板项一律标「待实测」。
 
-RISC-V 架构规范和软件使能 profile(如 RVA23)持续成熟,但 Linux 主线对 RISC-V
-的持续集成测试仍存在缺口:架构扩展(侧信道、Vector、Hypervisor 等)与不同
-微架构行为差异缺乏一致、可重复的自动化验证。KernelCI 是 Linux 社区的持续
-内核测试基础设施,本项目的目标是把 RISC-V 特有的测试需求以**本地化、可复现、
-可上游化**的方式接入该体系。
+## 关键事实
 
-### 1.2 目标
+| 事实 | 数值(以仓库实测为准) |
+|---|---|
+| 测试内核 | torvalds/linux 7.2.0-rc7,riscv defconfig |
+| 编译方式 | WSL x86 交叉编译,riscv64-linux-gnu-gcc 15.2(22 线程) |
+| 虚拟化 | qemu-system-riscv64 10.2,TCG,`-cpu max`(含 V/H/ZPM 扩展,VLEN=128bit) |
+| 开发机 | Ubuntu 25.04 riscv64 QEMU VM,8 核/12G,ISA `rv64imafdcvh` |
+| 测试靶子 | openkylin-test.img(6GB 副本,已播种 SSH 公钥) |
+| boot 判定依据 | 串口 `login:` 提示 / systemd `Login Prompts` 目标 |
+| selftests 结果 | 10 项 9 过 1 挂 0 跳过(7.2.0-rc7 guest 内实测) |
+| 必需配置合同 | 17 项(V/SUPM/ZICBOM/virtio/ext4/串口/KVM=m 等) |
+| 待实测 | Hypervisor(KVM)真机、容器化整合、GitHub Actions、回归通过率历史 |
 
-1. 在 x86 宿主上搭建 RISC-V 内核的**全自动测试流水线**(构建 → 启动 → 测试 → 报告);
-2. 覆盖 SOW 要求的 **Vector/Hypervisor** 等目标扩展的回归测试(QEMU 虚拟化目标);
-3. 实现**配置漂移检测**,防止测试基线被悄悄破坏;
-4. 以开源形式沉淀,为 Phase 3 的 KernelCI 上游集成做准备。
+## 一、环境与架构
 
-### 1.3 完成度对照(SOW 四阶段)
+```
+Windows 11
+└── WSL2 Ubuntu (x86_64)                构建 + 测试宿主
+      qemu-system-riscv64 10.2 ｜ riscv64-linux-gnu-gcc 15.2 ｜ docker 29
+      ├── Ubuntu 25.04 riscv64 VM       功能测试原生环境(有 V/H 扩展)
+      └── openkylin-test.img            测试靶子:每次 -snapshot 启动
+             └─ 被「新编译的内核」直接启动(绕过 U-Boot)
+```
 
-| 阶段 | 要求 | 状态 |
+设计决策(见「共同底线」):
+- 采用 x86 交叉编译 + QEMU TCG 模拟的标准 KernelCI 模型;否决「RISC-V 内再嵌套 QEMU」(TCG 套 TCG 性能不可用,且非上游模型);
+- 测试靶子与主力环境彻底分离:副本 + `-snapshot`,零污染;
+- 结果判定以「真实到达登录提示符」为准,不用开机最早的 "Linux version"(会漏掉 init 之前的 panic)。
+
+## 二、分层能力
+
+### 2.1 boot 测试(scripts/boot-test.sh)
+
+| 做法 | 说明 |
+|---|---|
+| 启动 | `-kernel <新内核>` + `-drive <测试镜像>` + `-snapshot` + `-no-reboot` |
+| 判定 | 串口出现 `login:` 或 `Login Prompts` → PASS;panic/挂根/无 init → FAIL |
+| 兜底 | `timeout` 自动结束 QEMU,无残留进程;产出 result.json(内核版本/判定依据/时间戳) |
+
+实测:7.2.0-rc7 → `openKylin 2.0 SP2 openkylin ttyS0` + `openkylin login:`,PASS;openkylin.img mtime 纹丝未动(snapshot 生效)。
+
+### 2.2 功能测试(tests/cpuinfo, tests/vector)
+
+| 测试 | 做法 | 实测 |
 |---|---|---|
-| Phase 1 | 容器化流水线、tracking issue、首个验证脚本 | ✅ 完成(容器化方案已验证,主流程脚本化) |
-| Phase 2 | 配置漂移检测 + Vector/Hypervisor 回归测试 | 🟡 Vector 完成;Hypervisor 待真实硬件 |
-| Phase 3 | 向 KernelCI 主线提 PR | ⬜ 待社区接洽(findings 已备) |
-| Phase 4 | runbook / 博客 / demo / 徽章 | 🟡 runbook 已备(附录),其余待做 |
+| cpuinfo | 解析 `/proc/cpuinfo` 的 isa 行,断言 V/H 扩展存在 | PASS(双平台) |
+| vector | RVV 向量加法:`__riscv_vsetvl/vle/vadd/vse` 内建函数,读 `vlenb` CSR | PASS,VLEN=128bit |
 
-## 2. 技术架构
+注意:`/proc/cpuinfo` 的 isa 行是 `isa<TAB>: value` 格式,按列取值会取到冒号;GCC 的 RVV 内建函数带 `__riscv_` 前缀(与 Clang 裸名不同)。
 
-```
-┌─ Windows 11 ─────────────────────────────── 控制台 / 仓库管理
-│
-├─ WSL2 Ubuntu (x86_64) ────────────────────── 构建 + 测试宿主
-│     工具: qemu-system-riscv64 10.2 / riscv64-linux-gnu-gcc 15.2 / docker 29
-│     职责: 交叉编译内核、编排 QEMU、漂移检测、汇总报告
-│
-│   ┌─ QEMU (TCG) ──────────────────────────── 虚拟化测试目标
-│   │
-│   ├─ Ubuntu 25.04 riscv64 (开发机) ──────── 功能测试原生环境
-│   │     ISA: rv64imafdcvh (+V/H 扩展)  8核/12G
-│   │
-│   └─ openkylin-test.img (测试靶子) ──────── 每次 -snapshot 启动,零污染
-│         被「新编译的内核」直接启动(绕过 U-Boot)
-│
-└─ GitHub: xjysiiau/kernelci-riscv ─────────── 代码与基线配置
-```
+### 2.3 kselftest(tests/kselftest)
 
-**核心设计决策**:
-- 采用 **x86 宿主交叉编译 + QEMU TCG 模拟 riscv64** 的标准 KernelCI 模型,放弃
-  "RISC-V 内再嵌套 QEMU"方案(TCG 套 TCG 性能不可用,且非上游模型);
-- 测试靶子使用**闲置的 openkylin.img 复制品**,启动一律加 `-snapshot`,
-  任何写操作退出即丢弃——测试内核的 bug 永远不会污染镜像;
-- 主力开发环境(ubuntu.img)全程不参与测试。
+构建并运行内核官方 `tools/testing/selftests/riscv`(hwprobe/vector/sigreturn/mm/abi 五组)。三条官方运行前提已固化进脚本:
+1. 显式 `ARCH=riscv`(`uname -m` 返回 riscv64 匹配不上,会静默不编);
+2. vector 测试须在其构建目录内运行(它们 exec 同目录辅助程序);
+3. mm 测试须经 `run_mmap.sh`(`ulimit -s unlimited` 才切 bottom-up 布局)。
 
-## 3. 交付物(仓库结构)
+guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支持 `KSELFTEST_BUILD=skip` 免编译模式。
 
-```
-kernelci-riscv/
-├── configs/
-│   ├── riscv-qemu/defconfig          # 基准内核配置(与构建工具链同步)
-│   └── riscv-qemu/required-opts.txt  # 17 项必需选项合同(V/virtio/ext4/串口/KVM...)
-├── scripts/
-│   ├── build-kernel.sh               # 交叉编译(ARCH=riscv, 环境变量可覆盖)
-│   ├── boot-test.sh                  # 自动 boot 测试(-snapshot + 登录提示判定)
-│   ├── check-config-drift.sh         # 配置漂移检测(合同层 + 全量 diff 层)
-│   ├── seed-test-image.sh            # 一次性:播种测试镜像 SSH 公钥
-│   └── run-closed-loop.sh            # ★ 闭环流水线:一条命令跑完整测试
-├── tests/
-│   ├── run-tests.sh                  # 统一入口 → build/results.json
-│   ├── cpuinfo/run.sh                # ISA 解析,断言 v/h 扩展
-│   ├── vector/{run.sh, vector_add.c} # RVV 向量加法自测(VLEN 读取)
-│   └── kselftest/run.sh              # 内核官方 selftests/riscv 构建+运行
-├── docs/
-│   ├── findings-pointer-masking.md   # 上游 bug 报告底稿
-│   └── project-report.md             # 本文档
-└── configs/dsh-test.pub              # 测试 guest SSH 公钥
-```
+### 2.4 配置漂移检测(scripts/check-config-drift.sh)
 
-## 4. 流水线设计
+| 层级 | 机制 | 触发 |
+|---|---|---|
+| 必需选项合同 | `required-opts.txt` 17 项关键配置 | 缺失/变值 → FAIL |
+| 全量 diff | 基准 defconfig vs 实际 .config 归一化比对 | 丢失/禁用 → FAIL;变值 → WARN;新增 → INFO |
 
-### 4.1 闭环流水线(scripts/run-closed-loop.sh)
+退出码 0/1/2 分级,产出 config-drift.json。实测:首次运行即发现基准 defconfig 是 gcc 14.2 时代生成、与 gcc 15.2 交叉编译存在 4 项工具链漂移 + 9 项新选项——已同步基线归零;模拟关闭 `CONFIG_RISCV_ISA_V` 的漂移攻击被两层同时捕获(退出码 2)。
 
+### 2.5 一键闭环(scripts/run-closed-loop.sh)
+
+一条命令跑完整闭环,五步:
 ```
 [0]  配置漂移检查(FAIL 级直接中止)
 [1]  用新内核 + -snapshot 启动测试镜像(独立 SSH 端口)
-[2]  轮询等待 guest SSH 上线(超时判定 boot FAIL)
-[3]  scp 推送测试套件(预编译的静态二进制)
+[2]  轮询等待 guest SSH 上线(超时判 boot FAIL)
+[3]  scp 推送测试套件(预编译静态二进制)
 [4]  guest 内执行 cpuinfo / vector / kselftest
 [5]  拉回结果 → 输出 verdict
 ```
 
-### 4.2 boot 判定(scripts/boot-test.sh)
+可调参数用环境变量:`KERNEL`、`IMG`、`PORT`、`GUEST_USER`、`BOOT_TIMEOUT`。
+错误处理:镜像/内核缺失报错退出;SSH 超时判 boot FAIL 并贴串口尾部日志;结果在 `build/closed-loop/`(qemu.log / guest-run.log / guest-results/)。
+辅助脚本:`seed-test-image.sh`(一次性,把 SSH 公钥种进测试镜像,需 sudo)。
 
-- 判定依据: 串口出现 `login:` 提示或 systemd `Login Prompts` 目标
-  (而非开机最早的 "Linux version" —— 那会漏掉 init 之前的 panic);
-- 超时机制 + `-no-reboot` 防 panic 重启循环;
-- 产出结构化 `result.json`(内核版本/根文件系统/判定依据/时间戳)。
+## 三、测试矩阵(实测结果)
 
-### 4.3 配置漂移检测(scripts/check-config-drift.sh)
-
-| 层级 | 内容 | 触发 |
+| 测试 | 在 7.2.0-rc7 guest 内 | 对照:Ubuntu 6.14 开发机 |
 |---|---|---|
-| 必需选项合同 | 17 项关键配置(ISA_V/SUPM/ZICBOM/virtio/ext4/串口/KVM) | 缺失或变值 → FAIL |
-| 全量 diff | 基准 defconfig vs 实际 .config | 丢失/禁用 → FAIL;变值 → WARN;新增 → INFO |
+| boot(到登录提示) | ✅ PASS | — |
+| cpuinfo(v/h 断言) | ✅ PASS | ✅ PASS |
+| vector(RVV 加法) | ✅ PASS | ✅ PASS |
+| kselftest/hwprobe | ✅ PASS | ✅ PASS |
+| kselftest/cbo, which-cpus | ✅ PASS | ⏭ 未构建(头文件宏) |
+| kselftest/vstate_prctl(13 项) | ✅ PASS | ✅ PASS |
+| kselftest/v_initval, vstate_ptrace, validate_v_ptrace | ✅ PASS | ✅(validate 未构建) |
+| kselftest/sigreturn | ✅ PASS | ✅ PASS |
+| kselftest/mm(双布局) | ✅ PASS | ✅ PASS |
+| kselftest/abi/pointer_masking | ❌ FAIL(16 项 constraint) | ✅(相关项 SKIP) |
 
-实际使用中即发现:基准 defconfig 由 gcc 14.2 生成,而交叉编译使用 gcc 15.2,
-存在 4 项工具链版本漂移 + 9 项新增选项——已同步基线。模拟关闭
-`CONFIG_RISCV_ISA_V` 的漂移攻击被两层同时捕获。
+## 四、发现:abi/pointer_masking 在上游主线同样失败
 
-## 5. 测试矩阵与结果
+**症状**:`test_pmlen()` 对 PMLEN=1..16 的每个 "constraint" 断言全挂("validity" 全过)——内核接受任意 PMLEN 请求,但 `PR_GET_TAGGED_ADDR_CTRL` 报告的生效值恒为 0。
 
-### 5.1 boot 测试
-| 内核 | 目标 | 结果 |
-|---|---|---|
-| 7.2.0-rc7(defconfig,交叉编译) | openkylin-test.img | ✅ 到达 `openkylin login:` |
+**根因**(逐行比对,7.2-rc7 与 master 一致):
+- 测试:只设 PMLEN 字段(不带 `PR_TAGGED_ADDR_ENABLE`),期望内核向上取整并记住(`pmlen >= request`);
+- 内核:`set_tagged_addr_ctrl()` 在未设 ENABLE 时执行 `pmlen = PMLEN_0` 并返回成功(commit `3033b2b1e3`,2026-03-22,"riscv: Reset pmm when PR_TAGGED_ADDR_ENABLE is not set")。
 
-### 5.2 功能测试(在 7.2.0-rc7 新内核的 guest 内执行)
+**为什么上游 CI 看不到**:无 ZPM 扩展的平台上内核直接拒绝 prctl,测试走 SKIP 分支;QEMU `-cpu max` 恰好模拟了 Smnpm/Ssnpm,矛盾因此暴露。
 
-| 测试 | 内容 | 结果 |
-|---|---|---|
-| cpuinfo | 解析 ISA,断言 V/H 扩展 | ✅ PASS |
-| vector | RVV 向量加法(vsetvl/vle/vadd/vse, VLEN=128bit) | ✅ PASS |
-| kselftest/hwprobe | 扩展探测 syscall | ✅ PASS |
-| kselftest/cbo, which-cpus | 缓存块操作/每核一致性 | ✅ PASS |
-| kselftest/vstate_prctl | 向量状态 prctl 语义(13 项) | ✅ PASS |
-| kselftest/v_initval, vstate_ptrace, validate_v_ptrace | 向量初始化/ptrace | ✅ PASS |
-| kselftest/sigreturn | 信号返回向量状态恢复 | ✅ PASS |
-| kselftest/mm(mmap 双布局) | 栈限制无穷时 bottom-up | ✅ PASS |
-| kselftest/abi/pointer_masking | 指针掩码 prctl 语义 | ❌ FAIL(见 §6) |
+**建议**:低实际影响,但测试与内核对「仅设 PMLEN」语义存在分歧,二者之一应修改;向 `kernelci@lists.linux.dev` / `linux-riscv@lists.infradead.org` 报告。完整底稿见 docs/findings-pointer-masking.md。
 
-**总计: 9/10 通过,1 项真实失败,0 跳过。**
+## 五、验收流程(每步要有对照数据)
 
-### 5.3 同一套件在 Ubuntu 6.14 开发机上的对照
-✅ 全部通过(pointer_masking 的两组约束测试在该内核上被 SKIP——这正是 §6 的关键线索)。
+1. **boot 判定**:假判定("Linux version")vs 真判定(login 提示)对照,本方案用真判定,已实测;
+2. **漂移检测**:基线归零后注入漂移(关 V 扩 + 改 HZ),两层命中、退出码 2,已实测;
+3. **kselftest 双平台对照**:Ubuntu 6.14(SKIP)vs 7.2.0-rc7 guest(FAIL)各跑一遍,差异即发现,已实测;
+4. **待实测**:Hypervisor(KVM)真机(RISE/生态实验室硬件);容器化整合(podman 方案已验证未整合);GitHub Actions;回归通过率历史趋势(results.json 归档)。
 
-## 6. 关键发现:abi/pointer_masking selftest 在上游主线同样失败
+## 六、共同底线
 
-### 6.1 症状
-`test_pmlen()` 对 PMLEN=1..16 的每一个 "constraint" 断言全部失败
-("validity" 断言却全部通过),即内核**接受**任意 PMLEN 请求,但
-`PR_GET_TAGGED_ADDR_CTRL` 报告的实际生效值恒为 0。
+1. 测试靶子启动必须 `-snapshot`;主力 ubuntu.img 永不参与测试;
+2. selftests 必须显式 `ARCH=riscv`;vector 测试须在其构建目录内运行;mm 测试须经 `run_mmap.sh`;
+3. guest 内只跑预编译静态二进制,不依赖 guest 工具链;
+4. 速度/结果数字实测才报,未测的标「待实测」;
+5. 必需选项合同是硬约束,改配置必须同步基线并重跑漂移检查;
+6. 交叉编译产物用静态链接;Windows 传脚本经 base64 过 stdin,规避 PowerShell CRLF。
 
-### 6.2 根因(逐行比对确认)
-- 测试(7.2-rc7 与 master 相同):只设置 PMLEN 字段(不带
-  `PR_TAGGED_ADDR_ENABLE`),期望内核**向上取整并记住**请求
-  (`pmlen >= request`);
-- 内核(7.2-rc7 与 master 相同):`set_tagged_addr_ctrl()` 在未设置 ENABLE
-  时执行 `pmlen = PMLEN_0`(commit `3033b2b1e3`,2026-03-22,
-  "riscv: Reset pmm when PR_TAGGED_ADDR_ENABLE is not set")并返回成功。
+## 七、待办(含待实测)
 
-### 6.3 为什么上游 CI 看不到
-无 ZPM(指针掩码)扩展的平台上,内核直接拒绝 prctl,测试进入 SKIP 分支。
-**QEMU `-cpu max` 恰好模拟了 Smnpm/Ssnpm**,使该矛盾暴露。真实硬件大多
-无 ZPM,故该失败是"虚拟 ZPM 目标"特有问题。
+| 项 | 状态 |
+|---|---|
+| kernelci-project tracking issue 发布 | 草稿已备 |
+| findings 发上游(KernelCI / linux-riscv) | 底稿已备 |
+| Hypervisor(KVM)真机测试 | 待硬件 |
+| 容器化整合 + GitHub Actions | 待实测 |
+| 回归通过率历史统计 | 未开始 |
+| Phase 3:Maestro/kci-dev 集成 PR | 未开始 |
+| 博客 / demo / LF 徽章 | 未开始 |
 
-### 6.4 影响与建议
-低实际影响(指针掩码尚属小众特性),但测试与内核对 "仅设 PMLEN" 的语义
-存在分歧,二者之一应修改。建议向 `kernelci@lists.linux.dev` /
-`linux-riscv@lists.infradead.org` 报告。完整底稿见
-[docs/findings-pointer-masking.md](findings-pointer-masking.md)。
+## 八、关键参考资料
 
-## 7. 工程经验(踩坑记录)
-
-1. **selftests 必须显式传 `ARCH=riscv`**:Makefile 用 `uname -m` 判断架构,
-   riscv64 匹配不上 `riscv`,会静默什么都不编;
-2. **vector 测试须在其构建目录内运行**:它们 fork 子进程 exec 同目录辅助程序;
-3. **mm 测试须经 `run_mmap.sh`**:`mmap_bottomup` 依赖 `ulimit -s unlimited`
-   才切 bottom-up 布局;
-4. **GCC 的 RVV 内建函数带 `__riscv_` 前缀**(`__riscv_vadd_vv_i32m1`),与
-   Clang 裸名不同;
-5. **`/proc/cpuinfo` 的 isa 行**是 `isa\t\t: value` 格式,按列取值会取到冒号;
-6. **交叉编译产物用静态链接**,避免 guest glibc 版本差异;
-7. WSL 下 `sudo` 前缀运行脚本会使 `$HOME` 变为 `/root`,需用 `SUDO_USER` 解析;
-8. Windows ssh 传脚本经 base64 过 stdin,规避 PowerShell 管道 CRLF 问题。
-
-## 8. 后续计划
-
-1. [ ] 发布 kernelci-project tracking issue(草稿已备)
-2. [ ] 向 KernelCI / linux-riscv 报告 pointer-masking findings
-3. [ ] Hypervisor(KVM)真机测试:RISE / 生态实验室硬件
-4. [ ] 回归通过率历史统计(results.json 趋势)
-5. [ ] 容器化整合(podman 方案已验证)与 GitHub Actions
-6. [ ] Phase 3:KernelCI Maestro/kci-dev 集成 PR
-7. [ ] 博客 / demo 视频 / LF 徽章
+- SOW:github.com/riscv-admin/dev-partners/issues/49;DevPartners 看板:github.com/orgs/riscv-admin/projects/2
+- KernelCI 新架构:docs.kernelci.org(Monitor tests / kci-dev / Maestro API);kci-dev 仓库:github.com/kernelci/kci-dev
+- pointer-masking 根因:内核 commit `3033b2b1e3`("riscv: Reset pmm when PR_TAGGED_ADDR_ENABLE is not set",2026-03-22)
+- selftests:tools/testing/selftests/riscv(hwprobe/vector/sigreturn/mm/abi)
+- RVV:GCC 内建函数 `__riscv_` 前缀;PLCT 128 位向量扩展
+- 工具链:riscv64-linux-gnu-gcc 15.2 / qemu-system-riscv64 10.2 / OpenSBI fw_dynamic
 
 ## 附录:复现指南
 
 ### A. 一次性准备(需要 sudo)
 ```bash
-# WSL 内:
 git clone https://github.com/xjysiiau/kernelci-riscv.git ~/kernelci-riscv
 git clone --depth=1 https://github.com/torvalds/linux.git ~/linux
 sudo apt install gcc-riscv64-linux-gnu qemu-system-riscv flex bison bc libssl-dev libelf-dev
@@ -206,7 +175,7 @@ scripts/run-closed-loop.sh
 # 输出: BOOT OK → guest 测试结果 → OVERALL 判定
 ```
 
-### C. 单独运行某一层
+### C. 分层单独运行
 ```bash
 scripts/check-config-drift.sh      # 配置漂移
 scripts/boot-test.sh               # boot 测试
