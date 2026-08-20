@@ -68,14 +68,36 @@ join -t "$(printf '\t')" -a1 -a2 -e '<ABSENT>' -o 0,1.2,2.2 \
   "$TMP/ref" "$TMP/actual" > "$TMP/joined"
 
 LOST=0; DISABLED=0; CHANGED=0; NEW=0
+MARKER_LOST=0; MARKER_DISABLED=0
 : > "$TMP/lost"; : > "$TMP/disabled"; : > "$TMP/changed"; : > "$TMP/new"
+: > "$TMP/marker_lost"; : > "$TMP/marker_disabled"
+
+# Environment-dependent capability markers (toolchain/arch auto-detection).
+# Losing/changing these only means the build environment differs; it is NOT
+# a real configuration regression, so they are WARN-level, never FAIL.
+is_marker() {
+  case "$1" in
+    CONFIG_TOOLCHAIN_HAS_*|CONFIG_CC_HAS_*|CONFIG_CC_CAN_LINK*|CONFIG_CC_IS_*|\
+    CONFIG_CC_VERSION*|CONFIG_GCC_VERSION*|CONFIG_LD_VERSION*|CONFIG_LD_IS_*|\
+    CONFIG_AS_VERSION*|CONFIG_AS_IS_*|CONFIG_OPENSSL_SUPPORTS_*|\
+    CONFIG_ARCH_HAS_*|CONFIG_ARCH_USES_*|CONFIG_HAVE_*)
+      return 0 ;;
+    *)
+      return 1 ;;
+  esac
+}
 
 while IFS="$(printf '\t')" read -r opt refval actval; do
   if [ "$actval" = "<ABSENT>" ]; then
     case "$refval" in
       y|m)
-        echo "  LOST      $opt=$refval (absent from actual)"
-        echo "$opt" >> "$TMP/lost"; LOST=$((LOST+1)) ;;
+        if is_marker "$opt"; then
+          echo "  MARKER-LOST $opt=$refval (absent from actual, env-dependent)"
+          echo "$opt" >> "$TMP/marker_lost"; MARKER_LOST=$((MARKER_LOST+1))
+        else
+          echo "  LOST      $opt=$refval (absent from actual)"
+          echo "$opt" >> "$TMP/lost"; LOST=$((LOST+1))
+        fi ;;
       *) ;;
     esac
   elif [ "$refval" = "<ABSENT>" ]; then
@@ -83,8 +105,13 @@ while IFS="$(printf '\t')" read -r opt refval actval; do
     echo "$opt" >> "$TMP/new"; NEW=$((NEW+1))
   elif [ "$refval" != "$actval" ]; then
     if [ "$actval" = "n" ]; then
-      echo "  DISABLED  $opt  ref=$refval actual=$actval"
-      echo "$opt" >> "$TMP/disabled"; DISABLED=$((DISABLED+1))
+      if is_marker "$opt"; then
+        echo "  MARKER-DISABLED $opt  ref=$refval actual=$actval"
+        echo "$opt" >> "$TMP/marker_disabled"; MARKER_DISABLED=$((MARKER_DISABLED+1))
+      else
+        echo "  DISABLED  $opt  ref=$refval actual=$actval"
+        echo "$opt" >> "$TMP/disabled"; DISABLED=$((DISABLED+1))
+      fi
     else
       echo "  CHANGED   $opt  ref=$refval actual=$actval"
       echo "$opt" >> "$TMP/changed"; CHANGED=$((CHANGED+1))
@@ -102,7 +129,9 @@ def lines(p):
         return []
 req_fail, lost, disabled = lines('req.fail'), lines('lost'), lines('disabled')
 changed, new = lines('changed'), lines('new')
-status = "FAIL" if (req_fail or lost or disabled) else ("WARN" if changed else "PASS")
+marker_lost, marker_disabled = lines('marker_lost'), lines('marker_disabled')
+status = "FAIL" if (req_fail or lost or disabled) else (
+    "WARN" if (changed or marker_lost or marker_disabled) else "PASS")
 d = {
     "test": "config-drift",
     "reference": ref,
@@ -111,15 +140,18 @@ d = {
     "lost": lost,
     "disabled": disabled,
     "changed": changed,
+    "marker_lost": marker_lost,
+    "marker_disabled": marker_disabled,
     "new_options": new,
     "status": status,
 }
 json.dump(d, open(os.path.join(out, "config-drift.json"), "w"), indent=2)
 print("\nconfig-drift:", status,
-      "(required_fail=%d lost=%d disabled=%d changed=%d new=%d)"
-      % (len(req_fail), len(lost), len(disabled), len(changed), len(new)))
+      "(required_fail=%d lost=%d disabled=%d changed=%d marker=%d new=%d)"
+      % (len(req_fail), len(lost), len(disabled), len(changed),
+         len(marker_lost) + len(marker_disabled), len(new)))
 PY
 
 [ "$REQ_FAIL" -eq 0 ] && [ "$LOST" -eq 0 ] && [ "$DISABLED" -eq 0 ] || exit 2
-[ "$CHANGED" -eq 0 ] || exit 1
+[ "$CHANGED" -eq 0 ] && [ "$MARKER_LOST" -eq 0 ] && [ "$MARKER_DISABLED" -eq 0 ] || exit 1
 exit 0
