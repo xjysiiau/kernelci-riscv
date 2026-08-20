@@ -152,6 +152,29 @@ print("\nconfig-drift:", status,
          len(marker_lost) + len(marker_disabled), len(new)))
 PY
 
+# DRIFT_STRICT=required: only the required-opts contract gates the exit code
+# (the full diff is still computed and reported). Useful on foreign runners
+# whose toolchain/kernel version differs from the local baseline.
+if [ "${DRIFT_STRICT:-full}" = "required" ]; then
+  if [ "$REQ_FAIL" -eq 0 ]; then
+    echo "drift-mode: required-only -> PASS (contract ok)"
+    python3 - "$OUT" <<'PY'
+import json, sys, os
+out = sys.argv[1]
+p = os.path.join(out, "config-drift.json")
+try:
+    d = json.load(open(p))
+    d["mode"] = "required"
+    d["status"] = "FAIL" if d.get("required_fail") else "PASS"
+    json.dump(d, open(p, "w"), indent=2)
+except Exception:
+    pass
+PY
+    exit 0
+  fi
+  exit 2
+fi
+
 [ "$REQ_FAIL" -eq 0 ] && [ "$LOST" -eq 0 ] && [ "$DISABLED" -eq 0 ] || exit 2
 [ "$CHANGED" -eq 0 ] && [ "$MARKER_LOST" -eq 0 ] && [ "$MARKER_DISABLED" -eq 0 ] || exit 1
 exit 0
