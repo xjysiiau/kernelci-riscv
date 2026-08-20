@@ -1,0 +1,32 @@
+# Critical options for the KernelCI RISC-V QEMU pipeline (SOW Phase 2).
+# Format: CONFIG_FOO=<value>   (value may be y, m or n)
+# check-config-drift.sh fails if any of these is missing or has another value.
+
+# Vector / architecture extensions (SOW: "targeted extensions")
+CONFIG_RISCV_ISA_V=y
+CONFIG_RISCV_ISA_C=y
+CONFIG_RISCV_ISA_SUPM=y
+CONFIG_RISCV_ISA_ZICBOM=y
+
+# QEMU virt platform devices
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+
+# Root filesystem (ext4 on virtio-blk)
+CONFIG_EXT4_FS=y
+
+# Serial console (boot detection depends on it)
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_SERIAL_EARLYCON=y
+
+# Base userspace plumbing
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_TTY=y
+
+# Hypervisor (module in baseline; usable on real H-extension hardware)
+CONFIG_KVM=m

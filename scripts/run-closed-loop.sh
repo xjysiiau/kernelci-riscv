@@ -24,6 +24,20 @@ if [ ! -f "$KEY" ]; then
   echo "[0/5] ssh key staged at $KEY"
 fi
 
+echo "[0b/5] config drift check..."
+set +e
+"$PROJECT/scripts/check-config-drift.sh"
+DRIFT_RC=$?
+set -e
+if [ "$DRIFT_RC" -eq 2 ]; then
+  echo "ABORT: FAIL-level config drift (see build/config-drift.json)"
+  exit 2
+elif [ "$DRIFT_RC" -eq 1 ]; then
+  echo "WARNING: WARN-level config drift (see build/config-drift.json)"
+else
+  echo "    config clean"
+fi
+
 SSHOPTS=(-i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
          -o UserKnownHostsFile="$OUT/known_hosts" -o ConnectTimeout=5)
 
