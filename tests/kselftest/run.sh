@@ -121,15 +121,26 @@ for f in sorted(glob.glob(os.path.join(work, '*.json'))):
     except Exception as e:
         items.append({"file": os.path.basename(f), "error": str(e)})
 st = [i.get("status") for i in items]
-overall = "FAIL" if "FAIL" in st else "PASS"
+executed = sum(1 for s in st if s in ("PASS", "FAIL", "XFAIL"))
+if executed == 0:
+    # Nothing actually ran (e.g. all binaries missing): that is a pipeline
+    # failure, not a pass - never report "PASS (0 tests)".
+    overall = "FAIL"
+    reason = "no tests executed (missing binaries?)"
+else:
+    overall = "FAIL" if "FAIL" in st else "PASS"
+    reason = ""
 summary = {"test": "kselftest", "status": overall,
            "pass": st.count("PASS"), "fail": st.count("FAIL"), "skip": st.count("SKIP"),
            "xfail": st.count("XFAIL"), "xpass": st.count("XPASS"),
            "tests": items}
+if reason:
+    summary["reason"] = reason
 json.dump(summary, open(os.path.join(out, "kselftest.json"), "w"), indent=2)
-print("kselftest summary: %s (pass=%d fail=%d skip=%d xfail=%d xpass=%d)" % (
+print("kselftest summary: %s (pass=%d fail=%d skip=%d xfail=%d xpass=%d)%s" % (
     overall, st.count("PASS"), st.count("FAIL"), st.count("SKIP"),
-    st.count("XFAIL"), st.count("XPASS")))
+    st.count("XFAIL"), st.count("XPASS"),
+    " - " + reason if reason else ""))
 PY
 
 grep -q '"status": "FAIL"' "$OUT/kselftest.json" && exit 1 || exit 0

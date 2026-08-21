@@ -19,7 +19,9 @@ mkdir -p "$OUT"
 [ -f "$KERNEL" ] || { echo "ERROR: kernel Image missing: $KERNEL"; exit 2; }
 
 if [ ! -f "$KEY" ]; then
-  cp /mnt/d/kernelcl/riscv-vm-key "$KEY"
+  KEY_SRC=${KEY_SRC:-/mnt/d/kernelcl/riscv-vm-key}
+  cp "$KEY_SRC" "$KEY" 2>/dev/null \
+    || { echo "ERROR: ssh key missing at $KEY (set KEY_SRC or pre-stage the key)"; exit 2; }
   chmod 600 "$KEY"
   echo "[0/5] ssh key staged at $KEY"
 fi
@@ -51,7 +53,7 @@ if [ ! -x "$ART_DIR/vector_add" ]; then
 fi
 if [ ! -x "$ART_DIR/kselftest/build/hwprobe/hwprobe" ]; then
   echo "[0c/5] cross-building riscv kselftests (missing)..."
-  KSELFTEST_SRC=${KSELFTEST_SRC:-$HOME/kernelci-work/linux}
+  KSELFTEST_SRC=${KSELFTEST_SRC:-${KERNEL_SRC:-$HOME/kernelci-work/linux}}
   (cd "$KSELFTEST_SRC/tools/testing/selftests/riscv" && \
    make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- \
         OUTPUT="$ART_DIR/kselftest/build" -j"$(nproc)") \

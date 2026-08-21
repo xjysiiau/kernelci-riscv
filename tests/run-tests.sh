@@ -31,7 +31,7 @@ for f in sorted(glob.glob(os.path.join(out, '*.json'))):
     except Exception as e:
         items.append({"file": os.path.basename(f), "error": str(e)})
 statuses = [i.get("status") for i in items if isinstance(i, dict)]
-overall = "FAIL" if "FAIL" in statuses else "PASS"
+overall = "PASS" if statuses and "FAIL" not in statuses else "FAIL"
 json.dump({"tests": items, "summary": {"total": len(items), "overall": overall}},
           open(os.path.join(out, "results.json"), "w"), indent=2)
 print("summary:", os.path.join(out, "results.json"), "->", overall)
