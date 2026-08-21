@@ -2,6 +2,11 @@ name: KernelCI RISC-V CI
 
 on:
   push:
+    paths:
+      - 'scripts/**'
+      - 'configs/**'
+      - 'tests/**'
+      - '.github/**'
   pull_request:
   workflow_dispatch:
 
@@ -60,3 +65,32 @@ jobs:
             build/vector_add
             build/kselftest
             build/config-drift.json
+
+  # Full closed loop (boot + guest tests) on the self-hosted WSL runner.
+  # Only when pipeline code changes or triggered manually — it boots QEMU
+  # and takes ~12 minutes.
+  pipeline-heavy:
+    runs-on: self-hosted
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Config drift check (required contract)
+        run: |
+          DRIFT_STRICT=required ACTUAL=$HOME/kernelci-work/linux/.config ./scripts/check-config-drift.sh
+          cat build/config-drift.json
+
+      - name: Full closed loop (boot seeded image + guest tests)
+        run: |
+          export http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890
+          ./scripts/run-closed-loop.sh
+
+      - name: Upload closed-loop results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: closed-loop-results
+          path: |
+            build/closed-loop/guest-results/results.json
+            build/closed-loop/qemu.log
