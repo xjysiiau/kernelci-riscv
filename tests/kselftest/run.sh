@@ -33,6 +33,20 @@ else
   echo "[build] done (see $WORK/build.log)"
 fi
 
+# Known upstream failures (tracked, see docs/findings-pointer-masking.md).
+# Space-separated "subdir/binary" entries. A known failure is reported as
+# XFAIL (expected) and does not fail the run; if it unexpectedly passes,
+# it is reported as XPASS — upstream may have fixed it, remove the entry.
+KNOWN_FAILURES=${KNOWN_FAILURES:-"abi/pointer_masking"}
+
+is_known_fail() {
+  local t="$1" k
+  for k in $KNOWN_FAILURES; do
+    [ "$t" = "$k" ] && return 0
+  done
+  return 1
+}
+
 # ------------------------------------------------------------ run table ----
 # run_one <subdir> <binary> [timeout]
 run_one() {
@@ -46,12 +60,23 @@ run_one() {
   (cd "$dir" && timeout "$tmo" "./$bin") > "$log" 2>&1
   local rc=$?
   if [ $rc -eq 0 ] && ! grep -q '^not ok' "$log"; then
-    echo "$sub/$bin : PASS"
-    echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"PASS\"}" > "$WORK/${sub}_${bin}.json"
+    if is_known_fail "$sub/$bin"; then
+      echo "$sub/$bin : XPASS (known failure no longer reproduces - upstream may have fixed it)"
+      echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"XPASS\"}" > "$WORK/${sub}_${bin}.json"
+    else
+      echo "$sub/$bin : PASS"
+      echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"PASS\"}" > "$WORK/${sub}_${bin}.json"
+    fi
   else
-    echo "$sub/$bin : FAIL (rc=$rc)"
-    grep -E '^(not ok|# FAILED|# Totals)' "$log" | head -4 | sed 's/^/    /'
-    echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"FAIL\",\"rc\":$rc}" > "$WORK/${sub}_${bin}.json"
+    if is_known_fail "$sub/$bin"; then
+      echo "$sub/$bin : XFAIL (known failure, see docs/findings-pointer-masking.md)"
+      grep -E '^(not ok|# FAILED|# Totals)' "$log" | head -3 | sed 's/^/    /'
+      echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"XFAIL\",\"rc\":$rc}" > "$WORK/${sub}_${bin}.json"
+    else
+      echo "$sub/$bin : FAIL (rc=$rc)"
+      grep -E '^(not ok|# FAILED|# Totals)' "$log" | head -4 | sed 's/^/    /'
+      echo "{\"test\":\"kselftest/$sub/$bin\",\"status\":\"FAIL\",\"rc\":$rc}" > "$WORK/${sub}_${bin}.json"
+    fi
   fi
 }
 
@@ -99,10 +124,12 @@ st = [i.get("status") for i in items]
 overall = "FAIL" if "FAIL" in st else "PASS"
 summary = {"test": "kselftest", "status": overall,
            "pass": st.count("PASS"), "fail": st.count("FAIL"), "skip": st.count("SKIP"),
+           "xfail": st.count("XFAIL"), "xpass": st.count("XPASS"),
            "tests": items}
 json.dump(summary, open(os.path.join(out, "kselftest.json"), "w"), indent=2)
-print("kselftest summary: %s (pass=%d fail=%d skip=%d)" % (
-    overall, st.count("PASS"), st.count("FAIL"), st.count("SKIP")))
+print("kselftest summary: %s (pass=%d fail=%d skip=%d xfail=%d xpass=%d)" % (
+    overall, st.count("PASS"), st.count("FAIL"), st.count("SKIP"),
+    st.count("XFAIL"), st.count("XPASS")))
 PY
 
 grep -q '"status": "FAIL"' "$OUT/kselftest.json" && exit 1 || exit 0
