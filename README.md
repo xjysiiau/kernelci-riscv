@@ -52,6 +52,41 @@ scripts/run-closed-loop.sh
 一次性准备:`scripts/seed-test-image.sh`(把 SSH 公钥种进测试镜像副本,需 sudo 一次)。
 结果位置:`build/closed-loop/`(qemu.log 串口日志 / guest-run.log / guest-results/)。
 
+## 快速开始(从零复现)
+
+前置条件:x86_64 Linux(物理机/虚拟机/WSL 均可)+ Docker 或手动安装的工具链;一个闲置的 RISC-V 发行版 raw 镜像(约 6GB,根分区为 ext4 且位于第 2 分区,如 openKylin/Ubuntu RISC-V);磁盘空间约 30GB。
+
+```bash
+# 1. 获取代码与内核源码(与基线同版本)
+git clone https://github.com/xjysiiau/kernelci-riscv.git
+git clone --depth=1 --branch v7.2-rc7 https://github.com/torvalds/linux.git ~/linux
+
+# 2. 准备环境(二选一)
+cd kernelci-riscv && ./scripts/docker-run-pipeline.sh bash        # Docker 方式:自动构建环境箱
+sudo apt install gcc-riscv64-linux-gnu libc6-dev-riscv64-cross \
+  qemu-system-misc openssh-client flex bison bc libssl-dev libelf-dev   # 原生方式
+
+# 3. 播种测试镜像(一次性,需 sudo;SRC 指向闲置镜像)
+SRC=/path/to/your-riscv.img ./scripts/seed-test-image.sh
+
+# 4. 交叉编译内核(一次性,8 核约 2.5-3 小时)
+cp configs/riscv-qemu/defconfig ~/linux/.config
+make -C ~/linux ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc) Image
+
+# 5. 跑完整闭环(约 3-12 分钟)
+KERNEL=~/linux/arch/riscv/boot/Image ./scripts/run-closed-loop.sh
+```
+
+只跑某一层(无需镜像、无需编译内核):
+
+```bash
+./scripts/check-config-drift.sh     # 配置漂移检查(需 ~/linux/.config 已生成)
+make -C ~/linux/tools/testing/selftests/riscv ARCH=riscv \
+  CROSS_COMPILE=riscv64-linux-gnu- OUTPUT=$PWD/build/kselftest -j$(nproc)  # 仅交叉编译 selftests
+```
+
+用 CI 跑:fork 本仓库后,云端 light 任务在每次 push 自动运行;完整闭环需在自有机器上注册自托管 runner(仓库 Settings → Actions → Runners → New self-hosted runner),并保证机器上内核源码与播种镜像路径匹配脚本默认值(`~/kernelci-work/linux`、`~/kernelci-test/openkylin-test.img`,或经环境变量覆盖)。
+
 ## 验收流程(每步需对照数据)
 
 1. **boot 判定对照**:假判定(grep "Linux version",开机即打印)vs 真判定(登录提示符)——本方案采用真判定,已实测;
