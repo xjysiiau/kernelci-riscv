@@ -3,9 +3,10 @@ Subject: riscv: abi/pointer_masking kselftest fails on ZPM-capable platforms
 
 Hi all,
 
-While building a local KernelCI-style testing pipeline for RISC-V
-(QEMU virt -cpu max, kernel v7.2.0-rc7, riscv defconfig), the
-tools/testing/selftests/riscv/abi/pointer_masking test fails every
+I am an intern at KUBUDS Tech, a RISC-V International member
+organization. While building a local KernelCI-style testing pipeline
+for RISC-V (QEMU virt -cpu max, kernel v7.2.0-rc7, riscv defconfig),
+the tools/testing/selftests/riscv/abi/pointer_masking test fails every
 "constraint" assertion for PMLEN=1..16:
 
     not ok 5 PMLEN=1 constraint

@@ -3,7 +3,8 @@ Title: RISC-V Development Partners: local QEMU boot + kselftest pipeline
 
 ## Context
 
-RISC-V Development Partners SOW:
+I am an intern at KUBUDS Tech (a RISC-V International member
+organization), working on the RISC-V Development Partners SOW:
 https://github.com/riscv-admin/dev-partners/issues/49
 
 Repo: https://github.com/xjysiiau/kernelci-riscv
