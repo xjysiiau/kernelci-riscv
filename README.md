@@ -17,7 +17,8 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 | boot 判定 | 串口出现 `login:` / systemd `Login Prompts`(不用最早的 "Linux version") |
 | selftests 结果 | 10 项 9 过 1 挂 0 跳过(7.2.0-rc7 guest 内实测) |
 | 必需配置合同 | 17 项(V/virtio/ext4/串口/KVM 等),漂移即 FAIL |
-| 待实测 | Hypervisor(KVM)真机、容器化整合、回归通过率历史 |
+| CI | GitHub Actions 双流水线:云端 light(漂移+交叉编译)+ WSL self-hosted runner heavy(完整闭环) |
+| 待实测 | Hypervisor(KVM)真机、回归通过率历史 |
 
 ## 分层能力
 

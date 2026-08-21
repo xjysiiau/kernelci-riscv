@@ -21,7 +21,8 @@ RISC-V 架构规范和软件使能 profile(如 RVA23)在成熟,但 Linux 主线�
 | boot 判定依据 | 串口 `login:` 提示 / systemd `Login Prompts` 目标 |
 | selftests 结果 | 10 项 9 过 1 挂 0 跳过(7.2.0-rc7 guest 内实测) |
 | 必需配置合同 | 17 项(V/SUPM/ZICBOM/virtio/ext4/串口/KVM=m 等) |
-| 待实测 | Hypervisor(KVM)真机、容器化整合、GitHub Actions、回归通过率历史 |
+| CI | GitHub Actions 双流水线:云端 light + WSL self-hosted runner heavy(完整闭环),已知失败 XFAIL 跟踪 |
+| 待实测 | Hypervisor(KVM)真机、回归通过率历史 |
 
 ## 一、环境与架构
 
@@ -126,7 +127,7 @@ guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支
 1. **boot 判定**:假判定("Linux version")vs 真判定(login 提示)对照,本方案用真判定,已实测;
 2. **漂移检测**:基线归零后注入漂移(关 V 扩 + 改 HZ),两层命中、退出码 2,已实测;
 3. **kselftest 双平台对照**:Ubuntu 6.14(SKIP)vs 7.2.0-rc7 guest(FAIL)各跑一遍,差异即发现,已实测;
-4. **待实测**:Hypervisor(KVM)真机(RISE/生态实验室硬件);容器化整合(podman 方案已验证未整合);GitHub Actions;回归通过率历史趋势(results.json 归档)。
+4. **待实测**:Hypervisor(KVM)真机(RISE/生态实验室硬件);回归通过率历史趋势(results.json 归档)。
 
 ## 六、共同底线
 
@@ -144,7 +145,7 @@ guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支
 | kernelci-project tracking issue 发布 | 草稿已备 |
 | findings 发上游(KernelCI / linux-riscv) | 底稿已备 |
 | Hypervisor(KVM)真机测试 | 待硬件 |
-| 容器化整合 + GitHub Actions | 待实测 |
+| 容器化整合 + GitHub Actions | ✅ 完成:Dockerfile + 双流水线 CI(云端 light + WSL self-hosted runner heavy 完整闭环),已知失败 XFAIL 跟踪 |
 | 回归通过率历史统计 | 未开始 |
 | Phase 3:Maestro/kci-dev 集成 PR | 未开始 |
 | 博客 / demo / LF 徽章 | 未开始 |
