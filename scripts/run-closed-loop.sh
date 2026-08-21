@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 
 if [ ! -f "$KEY" ]; then
   KEY_SRC=${KEY_SRC:-/mnt/d/kernelcl/riscv-vm-key}
+  mkdir -p "$(dirname "$KEY")"
   cp "$KEY_SRC" "$KEY" 2>/dev/null \
     || { echo "ERROR: ssh key missing at $KEY (set KEY_SRC or pre-stage the key)"; exit 2; }
   chmod 600 "$KEY"
