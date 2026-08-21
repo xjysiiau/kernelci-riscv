@@ -38,6 +38,27 @@ else
   echo "    config clean"
 fi
 
+# [0c/5] ensure the prebuilt guest test artifacts exist on the host.
+# A fresh checkout (e.g. on the CI runner) has no tests/build/, so build
+# them with the cross toolchain on demand.
+ART_DIR="$PROJECT/tests/build"
+mkdir -p "$ART_DIR"
+if [ ! -x "$ART_DIR/vector_add" ]; then
+  echo "[0c/5] cross-building vector_add (missing)..."
+  riscv64-linux-gnu-gcc -static -O2 -march=rv64gcv \
+    "$PROJECT/tests/vector/vector_add.c" -o "$ART_DIR/vector_add" \
+    || echo "  WARNING: vector_add cross-build failed"
+fi
+if [ ! -x "$ART_DIR/kselftest/build/hwprobe/hwprobe" ]; then
+  echo "[0c/5] cross-building riscv kselftests (missing)..."
+  KSELFTEST_SRC=${KSELFTEST_SRC:-$HOME/kernelci-work/linux}
+  (cd "$KSELFTEST_SRC/tools/testing/selftests/riscv" && \
+   make ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- \
+        OUTPUT="$ART_DIR/kselftest/build" -j"$(nproc)") \
+    > "$OUT/kselftest-cross-build.log" 2>&1 \
+    || echo "  (note: some subtargets may fail to build - see $OUT/kselftest-cross-build.log)"
+fi
+
 SSHOPTS=(-i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
          -o UserKnownHostsFile="$OUT/known_hosts" -o ConnectTimeout=5)
 
