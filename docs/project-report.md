@@ -22,7 +22,8 @@ RISC-V 架构规范和软件使能 profile(如 RVA23)在成熟,但 Linux 主线�
 | selftests 结果 | 10 项 9 过 1 挂 0 跳过(7.2.0-rc7 guest 内实测) |
 | 必需配置合同 | 17 项(V/SUPM/ZICBOM/virtio/ext4/串口/KVM=m 等) |
 | CI | GitHub Actions 双流水线:云端 light + WSL self-hosted runner heavy(完整闭环),已知失败 XFAIL 跟踪 |
-| 待实测 | Hypervisor(KVM)真机、回归通过率历史 |
+| 回归历史 | `results/trend.md` 通过率趋势,CI 自动归档回写 |
+| 待实测 | Hypervisor(KVM)真机 |
 
 ## 一、环境与架构
 
@@ -93,7 +94,18 @@ guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支
 
 可调参数用环境变量:`KERNEL`、`IMG`、`PORT`、`GUEST_USER`、`BOOT_TIMEOUT`。
 错误处理:镜像/内核缺失报错退出;SSH 超时判 boot FAIL 并贴串口尾部日志;结果在 `build/closed-loop/`(qemu.log / guest-run.log / guest-results/)。
-辅助脚本:`seed-test-image.sh`(一次性,把 SSH 公钥种进测试镜像,需 sudo)。
+辅助脚本:`seed-test-image.sh`(一次性,把 SSH 公钥种进测试镜像,需 sudo);闭环末尾自动调用 `record-result.sh` 归档本次结果。
+
+### 2.6 容器化 + CI + 回归历史
+
+| 组件 | 做法 | 状态 |
+|---|---|---|
+| 容器化 | `Dockerfile`(交叉工具链 + QEMU 环境箱)+ `scripts/docker-run-pipeline.sh`(挂载仓库/内核树/镜像) | 已构建并实测 |
+| CI(云端) | `.github/workflows/ci.yml` pipeline-light:漂移检查(required 合同)+ 交叉编译 selftests/vector_add,每次 push 自动跑 | 实测 PASS |
+| CI(自托管) | pipeline-heavy:WSL self-hosted runner(GitHub 远程调度)跑完整闭环;仅代码路径变更或手动触发 | 实测 PASS |
+| 回归历史 | `scripts/record-result.sh` 按时间戳+内核版本归档到 `results/history/`;`scripts/report-history.py` 生成 `results/trend.md` 通过率趋势表;ci-bot 自动 commit 回仓库;XFAIL 登记已知失败、XPASS 报警上游修复 | 已上线(趋势表随每次 CI 自动增长) |
+
+CI 调试中暴露并修复的问题(均被"换台机器跑"才暴露):工具链漂移分类、内核版本固定(v7.2-rc7)、闭环自给自足(现场交叉编译缺失产物)、交叉 libc 依赖、自托管 runner artifact 上传不稳(改为 git 历史持久化)。
 
 ## 三、测试矩阵(实测结果)
 
@@ -127,7 +139,7 @@ guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支
 1. **boot 判定**:假判定("Linux version")vs 真判定(login 提示)对照,本方案用真判定,已实测;
 2. **漂移检测**:基线归零后注入漂移(关 V 扩 + 改 HZ),两层命中、退出码 2,已实测;
 3. **kselftest 双平台对照**:Ubuntu 6.14(SKIP)vs 7.2.0-rc7 guest(FAIL)各跑一遍,差异即发现,已实测;
-4. **待实测**:Hypervisor(KVM)真机(RISE/生态实验室硬件);回归通过率历史趋势(results.json 归档)。
+4. **待实测**:Hypervisor(KVM)真机(RISE/生态实验室硬件)。
 
 ## 六、共同底线
 
@@ -146,7 +158,7 @@ guest 内跑预编译的**静态**二进制(避免 guest glibc 版本差异),支
 | findings 发上游(KernelCI / linux-riscv) | 底稿已备 |
 | Hypervisor(KVM)真机测试 | 待硬件 |
 | 容器化整合 + GitHub Actions | ✅ 完成:Dockerfile + 双流水线 CI(云端 light + WSL self-hosted runner heavy 完整闭环),已知失败 XFAIL 跟踪 |
-| 回归通过率历史统计 | 未开始 |
+| 回归通过率历史统计 | ✅ 完成:`results/trend.md` 趋势表,CI 自动归档回写(ci-bot) |
 | Phase 3:Maestro/kci-dev 集成 PR | 未开始 |
 | 博客 / demo / LF 徽章 | 未开始 |
 

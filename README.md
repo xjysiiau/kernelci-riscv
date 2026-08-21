@@ -18,7 +18,8 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 | selftests 结果 | 10 项 9 过 1 挂 0 跳过(7.2.0-rc7 guest 内实测) |
 | 必需配置合同 | 17 项(V/virtio/ext4/串口/KVM 等),漂移即 FAIL |
 | CI | GitHub Actions 双流水线:云端 light(漂移+交叉编译)+ WSL self-hosted runner heavy(完整闭环) |
-| 待实测 | Hypervisor(KVM)真机、回归通过率历史 |
+| 回归历史 | `results/trend.md` 通过率趋势表:每次 CI 自动归档、ci-bot 自动回写仓库 |
+| 待实测 | Hypervisor(KVM)真机 |
 
 ## 分层能力
 
@@ -29,6 +30,7 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 | kselftest | `tests/kselftest` 构建并运行内核官方 selftests/riscv(hwprobe/vector/sigreturn/mm/abi) | 9/10,详见 findings |
 | 配置漂移 | `scripts/check-config-drift.sh`:必需合同 + 全量 diff 两层 | 实测 PASS(模拟攻击被捕获) |
 | 闭环 | `scripts/run-closed-loop.sh`:漂移检查→启动→SSH→推送测试→guest 内跑→拉回报告 | 实测跑通 |
+| 回归历史 | `scripts/record-result.sh` 归档每次结果 + `scripts/report-history.py` 生成趋势表;CI 自动回写仓库 | 已上线(3 次运行) |
 
 ## 一键命令
 
@@ -43,7 +45,7 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 1. **boot 判定**:假判定(只 grep "Linux version")vs 真判定(login 提示)——本方案用真判定,已实测 PASS;
 2. **漂移检测**:基线同步后 0 漂移;模拟关闭 `CONFIG_RISCV_ISA_V` + 改 `CONFIG_HZ`,两层同时命中、退出码 2(已实测);
 3. **kselftest 双平台对照**:同一套件在 Ubuntu 6.14(pointer_masking 走 SKIP)与 7.2.0-rc7 guest(暴露失败)各跑一遍,差异即发现(已实测);
-4. **待实测**:Hypervisor 真机、容器化整合、GitHub Actions、回归通过率历史趋势。
+4. **待实测**:Hypervisor 真机。已完成并实测:容器化(Dockerfile)、GitHub Actions(双流水线)、回归通过率历史(trend.md 自动增长)。
 
 ## 共同底线
 
@@ -57,7 +59,7 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 
 - SOW:github.com/riscv-admin/dev-partners/issues/49
 - KernelCI 新架构:docs.kernelci.org(Monitor tests / kci-dev / Maestro)
-- pointer-masking 根因:内核 commit `3033b2b1e3`("riscv: Reset pmm when PR_TAGGED_ADDR_ENABLE is not set");详见 docs/findings-pointer-masking.md
+- pointer-masking 根因:内核 commit `3033b2b1e3`("riscv: Reset pmm when PR_TAGGED_ADDR_ENABLE is not set");详见 docs/findings-pointer-masking.md;上游邮件底稿 docs/findings-email-draft.md
 - selftests:tools/testing/selftests/riscv(hwprobe/vector/sigreturn/mm/abi)
 - GCC RVV 内建函数带 `__riscv_` 前缀(与 Clang 裸名不同);`/proc/cpuinfo` isa 行为 `isa<TAB>: value` 格式
-- 完整报告:docs/project-report.md
+- 回归趋势:results/trend.md;tracking issue 文本:docs/tracking-issue-draft.md;完整报告:docs/project-report.md
