@@ -87,14 +87,9 @@ jobs:
           export http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890
           ./scripts/run-closed-loop.sh
 
-      - name: Upload closed-loop results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: closed-loop-results
-          path: |
-            build/closed-loop/guest-results/results.json
-            build/closed-loop/qemu.log
+      # Results are persisted via the record/publish step below (history in
+      # git), so no artifact upload here — self-hosted runners can have
+      # flaky artifact-upload connectivity.
 
       - name: Record result history and publish
         if: always()
