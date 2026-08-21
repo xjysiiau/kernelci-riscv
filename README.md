@@ -32,6 +32,20 @@ RISC-V 架构规范在成熟,但 Linux 主线缺一套持续、可复现的 RISC
 | 闭环流水线 | `scripts/run-closed-loop.sh`:漂移检查→启动→SSH 接入→推送测试→guest 内执行→拉回报告 | 跑通 |
 | 回归历史 | `scripts/record-result.sh` + `scripts/report-history.py`:按运行归档 + 通过率趋势表 | 已上线 |
 
+## 目录结构
+
+| 目录 | 作用 |
+|---|---|
+| `scripts/` | 全部自动化脚本:`run-closed-loop.sh` 总指挥(闭环)、`build-kernel.sh` 交叉编译、`boot-test.sh` boot 测试、`check-config-drift.sh` 漂移检测、`seed-test-image.sh` 镜像播种、`record-result.sh` + `report-history.py` 回归历史、`docker-run-pipeline.sh` 容器入口 |
+| `tests/` | 测试本体:`run-tests.sh` 统一入口;`cpuinfo/` ISA 检测(v/h 断言);`vector/` RVV 向量加法自测;`kselftest/` 内核官方 selftests 构建+运行器 |
+| `configs/` | 配置基线:`riscv-qemu/defconfig` 基准内核配置;`riscv-qemu/required-opts.txt` 17 项必需选项合同;`dsh-test.pub` 测试 guest SSH 公钥 |
+| `results/` | 数据:`history/` 每次测试的归档快照(时间戳+内核版本命名);`trend.md` 通过率趋势表(CI 自动更新) |
+| `docs/` | 文档:`project-report.md` 完整报告;`findings-pointer-masking.md` 上游 bug 技术底稿;`findings-email-draft.md` 上游邮件定稿;`tracking-issue-draft.md` KernelCI 社区 issue 定稿 |
+| `.github/workflows/` | CI 定义:双流水线(云端 light + 自托管 runner heavy) |
+| `Dockerfile` | 容器环境箱:交叉工具链 + QEMU,一次构建处处可用 |
+
+记忆法:`scripts/` 管怎么跑,`tests/` 管跑什么,`configs/` 管按什么标准,`results/` + `docs/` 管留下什么证据,`.github/` + `Dockerfile` 管在哪都能自动跑。
+
 ## 一键命令
 
 ```bash
