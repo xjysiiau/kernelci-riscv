@@ -120,4 +120,9 @@ echo "--- verdict ---"
 if [ -f "$OUT/guest-results/results.json" ]; then
   python3 -c "import json;d=json.load(open('$OUT/guest-results/results.json'));print('OVERALL:',d['summary']['overall']);[print(' -',t.get('test','?'),'->',t.get('status','?')) for t in d['tests']]" || true
 fi
+
+echo "--- recording result history ---"
+if [ -x "$PROJECT/scripts/record-result.sh" ]; then
+  "$PROJECT/scripts/record-result.sh" "$OUT/guest-results/results.json" || echo "  (record skipped)"
+fi
 exit "$GUEST_RC"

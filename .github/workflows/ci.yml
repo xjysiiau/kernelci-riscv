@@ -95,3 +95,17 @@ jobs:
           path: |
             build/closed-loop/guest-results/results.json
             build/closed-loop/qemu.log
+
+      - name: Record result history and publish
+        if: always()
+        run: |
+          ./scripts/record-result.sh build/closed-loop/guest-results/results.json || echo "(no results to record)"
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git add results/
+          if git diff --cached --quiet; then
+            echo "no history changes to publish"
+          else
+            git commit -m "ci: record regression results $(date -u +%Y%m%d-%H%M%S)"
+            git push || echo "WARNING: history push failed (check Workflow permissions = Read and write)"
+          fi
