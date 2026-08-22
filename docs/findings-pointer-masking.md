@@ -68,10 +68,29 @@ rejects the prctl, the test takes the skip path, and all assertions are SKIP.
 Hardware with ZPM is still rare, while QEMU `-cpu max` emulates it — so the
 failure only shows up on virtual ZPM-capable targets such as this one.
 
+## Experiment results (fix attempts, each built and run in the guest)
+
+1. **Test-side: pass PR_TAGGED_ADDR_ENABLE** — SIGSEGV (rc=139) right after
+   the first successful SET: enabling the ABI applies pointer masking to the
+   test process itself; its untagged stack addresses (top bits set) become
+   invalid, so the next access faults. TAP stops after PMLEN=0 (skipped).
+2. **Kernel-side: remember the rounded PMLEN without touching envcfg** — no
+   effect, still fails identically. get_tagged_addr_ctrl() derives the
+   effective PMLEN from envcfg.PMM (the hardware register), not from
+   mm->context.pmlen; the code comment states the invariant ("mm context's
+   pmlen is set only when the tagged address ABI is enabled"). The change
+   would also break that invariant for uaccess/mmap masking. Retired.
+
+See patches/README.md for the full matrix.
+
 ## Impact / suggested action
-- Low practical impact (pointer masking is niche), but the test and the kernel
-  disagree about the PMLEN-only set semantics; one of them should change.
-- Candidate upstream report: kernelci@lists.linux.dev / linux-riscv@lists.infradead.org.
+- The test's expectation contradicts the kernel's documented, coherent design
+  (PMLEN-only set = reset; effective PMLEN is read from envcfg.PMM). The
+  kernel should not change; the test should be rewritten to probe the
+  round-up behavior in a way that survives having the ABI enabled (e.g. a
+  child process doing raw-syscall SET + GET and reporting via exit status).
+- Candidate upstream report: kernelci@lists.linux.dev / linux-riscv@lists.infradead.org
+  (email sent 2026-08-22).
 
 ## Repro (using this repo)
 ```bash

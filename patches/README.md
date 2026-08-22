@@ -1,33 +1,40 @@
 # Prepared patches for the pointer_masking finding
 
-See docs/findings-pointer-masking.md for the finding and the upstream
-discussion (linux-riscv@lists.infradead.org, 2026-08-22).
+See docs/findings-pointer-masking.md for the finding, the experimental
+results below, and the upstream discussion
+(linux-riscv@lists.infradead.org, 2026-08-22).
 
-Both patches are generated against torvalds/linux v7.2.0-rc7 (plain
-`git diff` output; apply with `git am` or `patch -p1` from the kernel
-tree root).
+All experiments were run on kernel v7.2.0-rc7 (defconfig, SUPM=y) booting
+a seeded openKylin image on QEMU virt -cpu max, with the selftest built
+from the same tree.
 
-## A. Test-side fix (recommended to send first)
+## Experimental results (each variant was built and run in the guest)
 
-`0001-selftests-riscv-pointer_masking-pass-ENABLE.patch`
+| Variant | Result in guest |
+|---|---|
+| unpatched | test_pmlen fails every "constraint" assertion (PMLEN=1..16), PR_GET always reports PMLEN=0. Reproduces upstream behavior. |
+| A: test passes PR_TAGGED_ADDR_ENABLE | **SIGSEGV (rc=139)** after the first successful SET: enabling the ABI applies pointer masking to the test process itself; its untagged stack addresses (top bits set) become invalid, so the next access faults. The TAP log stops after PMLEN=0 (skipped, EINVAL). |
+| B: kernel remembers rounded PMLEN without touching envcfg | **No effect** — still fails identically. get_tagged_addr_ctrl() derives the effective PMLEN from envcfg.PMM (hardware register), not from mm->context.pmlen; the code comment states the invariant ("mm context's pmlen is set only when the tagged address ABI is enabled"). B would also break that invariant for uaccess/mmap masking. **Retired.** |
 
-The kernel treats a PMLEN-only `PR_SET_TAGGED_ADDR_CTRL` as "reset to 0"
-(commit 3033b2b1e3), so probing the PMLEN round-up behavior requires
-passing `PR_TAGGED_ADDR_ENABLE`. With this patch:
+## Conclusion
 
-- test_pmlen sets PR_TAGGED_ADDR_ENABLE for every request, so the kernel's
-  round-up logic (request <= 7 -> PMLEN_7, <= 16 -> PMLEN_16) is actually
-  exercised and the "constraint" assertions pass;
-- request = 0 combined with ENABLE is rejected by the kernel (-EINVAL,
-  "ABI cannot be enabled when PMLEN == 0"), so PMLEN=0 is reported as
-  SKIP — consistent with test_tagged_addr_abi()'s existing expectation.
+The test's expectation (PMLEN-only set is rounded and remembered) contradicts
+the kernel's documented, coherent design:
 
-## B. Kernel-side alternative (only if maintainers prefer the test's reading)
+- set_tagged_addr_ctrl(): PMLEN-only request resets the effective PMLEN to 0
+  (commit 3033b2b1e3); PMLEN is applied only together with
+  PR_TAGGED_ADDR_ENABLE;
+- get_tagged_addr_ctrl(): effective PMLEN is read from envcfg.PMM; the
+  ENABLE flag is reported from mm->context.pmlen.
 
-`0001-riscv-alternative-remember-pmlen.patch`
+The correct fix is a **test rewrite**: probe the round-up behavior in a way
+that survives having the ABI enabled, e.g. a child process performing the
+SET + GET with raw syscalls (no libc/stack access after enabling) and
+reporting the result via its exit status. The kernel should not change.
 
-Keeps the rounded PMLEN in mm->context.pmlen (so PR_GET reports the
-rounded value, satisfying the test as written) but still leaves
-envcfg.PMM at PMLEN_0 while the tagged-address ABI is not enabled,
-preserving the security intent of commit 3033b2b1e3. This changes the
-prctl ABI semantics and requires maintainer review before sending.
+The naive test-side patch (`0001-selftests-riscv-pointer_masking-pass-ENABLE.patch`)
+is kept only as a record of the failed experiment (it crashes); the kernel
+patch (`0001-riscv-alternative-remember-pmlen.patch`) is kept as a record of
+the other failed experiment (it has no effect and is undesirable). Neither
+should be sent upstream. Send the rewritten-test patch once written (to be
+done together with maintainer guidance).
