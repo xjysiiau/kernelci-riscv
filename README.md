@@ -126,6 +126,11 @@ make -C ~/linux/tools/testing/selftests/riscv ARCH=riscv \
 - 已知坑:GCC RVV 内建函数带 `__riscv_` 前缀(与 Clang 裸名不同);`/proc/cpuinfo` 的 isa 行为 `isa<TAB>: value` 格式
 - 回归趋势:results/trend.md;tracking issue 文本:docs/tracking-issue-draft.md;完整报告:docs/project-report.md
 
+## 社区链接
+
+- KernelCI tracking issue:https://github.com/kernelci/kernelci-project/issues/579(2026-08-21 发布,open)
+- findings 邮件:已发 linux-riscv@lists.infradead.org(2026-08-22)
+
 ## 许可
 
 GPL-2.0(与内核生态一致;仓库内的内核 defconfig 派生自内核源码树,亦为 GPL-2.0)。详见 LICENSE。
