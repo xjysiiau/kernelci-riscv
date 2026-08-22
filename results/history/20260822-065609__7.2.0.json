@@ -1,0 +1,74 @@
+{
+  "tests": [
+    {
+      "test": "cpuinfo",
+      "arch": "riscv64",
+      "isa": "rv64imafdcvh_zicbom_zicbop_zicboz_ziccrse_zicfilp_zicfiss_zicntr_zicond_zicsr_zifencei_zihintntl_zihintpause_zihpm_zimop_zaamo_zabha_zacas_zalrsc_zawrs_zfa_zfbfmin_zfh_zfhmin_zca_zcb_zcd_zcmop_zba_zbb_zbc_zbkb_zbkc_zbkx_zbs_zknd_zkne_zknh_zkr_zkt_zksed_zksh_ztso_zvbb_zvbc_zve32f_zve32x_zve64d_zve64f_zve64x_zvfbfmin_zvfbfwma_zvfh_zvfhmin_zvkb_zvkg_zvkned_zvknha_zvknhb_zvksed_zvksh_zvkt_smaia_smmpm_smnpm_smstateen_ssaia_sscofpmf_ssnpm_sstc_svadu_svinval_svnapot_svpbmt_svrsw60t59b_svvptc",
+      "required": "v,h",
+      "status": "PASS",
+      "missing": ""
+    },
+    {
+      "test": "kselftest",
+      "status": "PASS",
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
+      "xfail": 1,
+      "xpass": 0,
+      "tests": [
+        {
+          "test": "kselftest/abi/pointer_masking",
+          "status": "XFAIL",
+          "rc": 139
+        },
+        {
+          "test": "kselftest/hwprobe/cbo",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/hwprobe/hwprobe",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/hwprobe/which-cpus",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/mm/run_mmap.sh",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/sigreturn/sigreturn",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/vector/v_initval",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/vector/validate_v_ptrace",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/vector/vstate_prctl",
+          "status": "PASS"
+        },
+        {
+          "test": "kselftest/vector/vstate_ptrace",
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "test": "vector",
+      "status": "PASS"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "overall": "PASS"
+  },
+  "_recorded_at": "20260822-065609",
+  "_kernel": "7.2.0"
+}

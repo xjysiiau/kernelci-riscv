@@ -77,7 +77,7 @@ git clone --depth=1 --branch v7.2-rc7 https://github.com/torvalds/linux.git ~/li
 
 # 2. 准备环境(二选一)
 cd kernelci-riscv && ./scripts/docker-run-pipeline.sh bash        # Docker 方式:自动构建环境箱
-sudo apt install build-essential gcc-riscv64-linux-gnu libc6-dev-riscv64-cross make \
+sudo apt install build-essential gcc-riscv64-linux-gnu libc6-dev-riscv64-cross make parted \
   qemu-system-misc openssh-client flex bison bc libssl-dev libelf-dev   # 原生方式
 
 # 3. 播种测试镜像(一次性,需 sudo;SRC 指向闲置镜像)
