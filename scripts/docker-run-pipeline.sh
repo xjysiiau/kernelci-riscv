@@ -22,7 +22,7 @@ if [ -f "$KEY_HOST" ]; then
 fi
 
 echo "[docker] running: ${*:-bash}"
-exec docker run --rm \
+exec docker run --rm -u "$(id -u):$(id -g)" \
   -v "$PROJECT:/work/kernelci-riscv" \
   -v "$KSRC:/work/linux" \
   -v "$IMGDIR:/work/images" \

@@ -6,7 +6,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential gcc-riscv64-linux-gnu make \
+        build-essential gcc-riscv64-linux-gnu libc6-dev-riscv64-cross make \
         flex bison bc libssl-dev libelf-dev \
         qemu-system-misc opensbi \
         openssh-client rsync python3 curl git ca-certificates \

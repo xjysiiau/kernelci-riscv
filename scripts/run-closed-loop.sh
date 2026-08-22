@@ -115,7 +115,7 @@ GUEST_RC=${PIPESTATUS[0]}
 set -e
 
 echo "[5/5] pulling results..."
-rm -rf "$OUT/guest-results"
+rm -rf "$OUT/guest-results" 2>/dev/null || true
 scp "${SSHOPTS[@]}" -P "$PORT" -r \
   "$GUEST_USER@127.0.0.1:/tmp/kernelci-tests/tests/build" "$OUT/guest-results" 2>/dev/null || true
 
