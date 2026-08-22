@@ -1,0 +1,17 @@
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index b2df7f722..f75a6049b 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -350,7 +350,11 @@ long set_tagged_addr_ctrl(struct task_struct *task, unsigned long arg)
+ 		return -EINVAL;
+ 
+ 	if (!(arg & PR_TAGGED_ADDR_ENABLE)) {
+-		pmlen = PMLEN_0;
++		/*
++		 * Remember the rounded PMLEN for PR_GET_TAGGED_ADDR_CTRL,
++		 * but keep pointer masking disabled in envcfg.PMM until the
++		 * tagged-address ABI is actually enabled.
++		 */
+ 		pmm = ENVCFG_PMM_PMLEN_0;
+ 	}
+ 

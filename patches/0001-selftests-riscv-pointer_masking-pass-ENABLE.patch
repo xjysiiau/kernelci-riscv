@@ -1,0 +1,15 @@
+diff --git a/tools/testing/selftests/riscv/abi/pointer_masking.c b/tools/testing/selftests/riscv/abi/pointer_masking.c
+index 2d540af7b..b5453de2f 100644
+--- a/tools/testing/selftests/riscv/abi/pointer_masking.c
++++ b/tools/testing/selftests/riscv/abi/pointer_masking.c
+@@ -44,7 +44,9 @@ static void test_pmlen(void)
+ 	for (int request = 0; request <= 16; request++) {
+ 		int pmlen, ret;
+ 
+-		ret = prctl(PR_SET_TAGGED_ADDR_CTRL, request << PR_PMLEN_SHIFT, 0, 0, 0);
++		ret = prctl(PR_SET_TAGGED_ADDR_CTRL,
++			    PR_TAGGED_ADDR_ENABLE | request << PR_PMLEN_SHIFT,
++			    0, 0, 0);
+ 		if (ret)
+ 			goto pr_set_error;
+ 
